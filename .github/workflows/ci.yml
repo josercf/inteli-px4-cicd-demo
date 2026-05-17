@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false # Dockerfile.sitl clona PX4 internamente (Makefile exige .git real)
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

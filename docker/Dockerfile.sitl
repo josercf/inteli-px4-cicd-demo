@@ -1,12 +1,20 @@
 # PX4 SITL — apenas o autopiloto rodando, sem simulador gráfico.
-# PR #1 usa backend 'none' (sem Gazebo) para validar plumbing MAVLink.
+# PR #1 usa backend 'none_iris' (sem Gazebo) para validar plumbing MAVLink.
 # PR #2 adiciona Gazebo Garden + modelo gz_x500 para missão real.
 FROM px4io/px4-dev-simulation-jammy:2024-05-18
 
 WORKDIR /workspace
 
-# Copia o submódulo PX4 já checkout em v1.16.2
-COPY PX4-Autopilot/ PX4-Autopilot/
+# Clone do PX4 dentro do container (não COPY do submódulo) porque o Makefile
+# do PX4 (linha 39) aborta se .git não existir, e o gitlink do submodule não
+# leva .git/ junto. Mantemos a tag sincronizada com .gitmodules do repo wrapper.
+# Quando o submódulo for atualizado (ADR-001 obriga novo ADR), atualizar a tag
+# abaixo também.
+ARG PX4_TAG=v1.16.2
+RUN git clone --depth 1 --branch ${PX4_TAG} \
+      https://github.com/PX4/PX4-Autopilot.git && \
+    cd PX4-Autopilot && \
+    git submodule update --init --recursive --depth 1
 
 WORKDIR /workspace/PX4-Autopilot
 
@@ -21,8 +29,8 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=60s --retries=12 \
     CMD pgrep -x px4 >/dev/null || exit 1
 
 # Launch da SITL com backend 'none' (sem simulador gráfico).
-# make px4_sitl none faz build incremental (no-op já que o default já foi compilado)
-# e depois invoca o binário com o init script do simulador.
+# make px4_sitl none_iris faz build incremental (no-op já que o default
+# já foi compilado) e depois invoca o binário com o init script do simulador.
 ENV HEADLESS=1
 ENV PX4_SIM_MODEL=none_iris
 CMD ["make", "px4_sitl", "none_iris"]
