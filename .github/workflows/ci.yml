@@ -106,7 +106,11 @@ jobs:
 
   deploy-dev:
     needs: sitl-build
-    runs-on: ubuntu-latest
+    # Runner self-hosted (VM srv-simulador): GitHub-hosted ficava preso ao
+    # parar jmavsim Java (não responde a SIGTERM), causando timeout no job
+    # mesmo após o teste passar. Self-hosted permite cleanup mais robusto e
+    # cache local da imagem SITL.
+    runs-on: [self-hosted, px4-sitl]
     timeout-minutes: 15
     environment: dev
     steps:
