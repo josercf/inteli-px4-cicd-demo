@@ -27,16 +27,21 @@ WORKDIR /workspace/PX4-Autopilot
 # Build da SITL sem auto-launch (target padrão produz binário em build/px4_sitl_default/bin/px4)
 RUN make px4_sitl_default
 
+# Pre-build do jmavsim (Java simulator headless) para evitar delay no CMD.
+# Como jmavsim_iris precisa de PX4 rodando, fazemos só o build do jar via gradle.
+RUN cd Tools/simulation/jmavsim/jMAVSim && \
+    ant create_run_jar copy_res 2>&1 | tail -3
+
 # MAVLink: PX4 ouve em 14540 (offboard) e 14550 (GCS) — UDP
 EXPOSE 14540/udp 14550/udp
 
 # Healthcheck: PX4 está rodando como processo (start-period generoso pra inicialização)
-HEALTHCHECK --interval=5s --timeout=3s --start-period=60s --retries=12 \
+HEALTHCHECK --interval=5s --timeout=3s --start-period=90s --retries=12 \
     CMD pgrep -x px4 >/dev/null || exit 1
 
-# Launch da SITL com backend 'none' (sem simulador gráfico).
-# make px4_sitl none_iris faz build incremental (no-op já que o default
-# já foi compilado) e depois invoca o binário com o init script do simulador.
+# Launch da SITL com jmavsim (simulador Java leve, sem GUI quando HEADLESS=1).
+# none_iris não funciona standalone — fica travado esperando simulador externo
+# no TCP 4560. jmavsim é o simulador "free" mais leve do ecosistema PX4 e roda
+# bem em CI (sem GPU, sem X11). Para Gazebo (modelo gz_x500), espere PR #2.
 ENV HEADLESS=1
-ENV PX4_SIM_MODEL=none_iris
-CMD ["make", "px4_sitl", "none_iris"]
+CMD ["make", "px4_sitl", "jmavsim_iris"]
