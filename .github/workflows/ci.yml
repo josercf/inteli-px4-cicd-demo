@@ -128,11 +128,19 @@ jobs:
         env:
           SITL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
+          set +e
+          # --timeout 5: jmavsim Java + PX4 não respondem rápido a SIGTERM;
+          # corta esperar shutdown limpo após tester sair com exit code.
           docker compose -f docker-compose.ci.yml up \
             --build \
             --abort-on-container-exit \
-            --exit-code-from tester
+            --exit-code-from tester \
+            --timeout 5
+          EXIT=$?
+          docker compose -f docker-compose.ci.yml kill || true
+          docker compose -f docker-compose.ci.yml rm -f -v || true
+          exit $EXIT
 
       - name: SITL logs on failure
         if: failure()
-        run: docker compose -f docker-compose.ci.yml logs sitl || true
+        run: docker compose -f docker-compose.ci.yml logs sitl 2>&1 | tail -100 || true
