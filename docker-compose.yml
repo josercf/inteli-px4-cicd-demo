@@ -18,7 +18,7 @@ services:
       sitl:
         condition: service_healthy
     environment:
-      - MAVLINK_URL=udpout://sitl:14540
+      - MAVLINK_URL=udpout://sitl:14556
     networks:
       - px4net
 

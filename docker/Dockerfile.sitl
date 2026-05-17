@@ -32,8 +32,10 @@ RUN make px4_sitl_default
 RUN cd Tools/simulation/jmavsim/jMAVSim && \
     ant create_run_jar copy_res 2>&1 | tail -3
 
-# MAVLink: PX4 ouve em 14540 (offboard) e 14550 (GCS) — UDP
-EXPOSE 14540/udp 14550/udp
+# MAVLink (PX4 v1.16 init.d-posix/px4-rc.mavlink):
+# 14556 → input promíscuo (aceita qualquer GCS, reciprocate pro source IP)
+# 14557 → input do canal "onboard"; PX4 manda telemetria pra 14540 (localhost por padrão)
+EXPOSE 14550/udp 14556/udp 14557/udp 14580/udp
 
 # Healthcheck: PX4 está rodando como processo (start-period generoso pra inicialização)
 HEALTHCHECK --interval=5s --timeout=3s --start-period=90s --retries=12 \

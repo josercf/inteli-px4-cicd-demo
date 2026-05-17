@@ -14,7 +14,11 @@ pytestmark = pytest.mark.sitl
 
 @pytest.fixture
 def mavlink_url() -> str:
-    return os.environ.get("MAVLINK_URL", "udpout://127.0.0.1:14540")
+    # Porta 14556 é a MAVLink "promíscua" do PX4 SITL v1.16 (rc.mavlink:
+    # `mavlink start -u 14556 -p`). Aceita heartbeat de qualquer GCS/SDK
+    # e reciproca pro IP de origem — funciona cross-container.
+    # 14540 NÃO funciona: é a porta de OUTPUT do PX4 (envia pra localhost).
+    return os.environ.get("MAVLINK_URL", "udpout://127.0.0.1:14556")
 
 
 async def test_mavsdk_connects_within_30s(mavlink_url: str) -> None:
