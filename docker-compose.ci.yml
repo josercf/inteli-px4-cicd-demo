@@ -1,0 +1,24 @@
+# CI: usa imagem SITL pré-publicada no GHCR (variável SITL_IMAGE).
+# Tester é buildado local (rápido, ~50MB).
+# Uso: SITL_IMAGE=ghcr.io/josercf/px4-sitl:<sha> docker compose -f docker-compose.ci.yml up --abort-on-container-exit --exit-code-from tester
+services:
+  sitl:
+    image: ${SITL_IMAGE:?SITL_IMAGE must be set}
+    networks:
+      - px4net
+
+  tester:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.tools
+    depends_on:
+      sitl:
+        condition: service_healthy
+    environment:
+      - MAVLINK_URL=udpout://sitl:14540
+    networks:
+      - px4net
+
+networks:
+  px4net:
+    driver: bridge

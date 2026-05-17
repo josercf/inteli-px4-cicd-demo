@@ -1,0 +1,27 @@
+# Dev local: builda ambos a partir do código fonte.
+# Uso: docker compose up --build --abort-on-container-exit --exit-code-from tester
+services:
+  sitl:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sitl
+    image: ghcr.io/josercf/px4-sitl:dev-local
+    networks:
+      - px4net
+
+  tester:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.tools
+    image: ghcr.io/josercf/px4-tools:dev-local
+    depends_on:
+      sitl:
+        condition: service_healthy
+    environment:
+      - MAVLINK_URL=udpout://sitl:14540
+    networks:
+      - px4net
+
+networks:
+  px4net:
+    driver: bridge
