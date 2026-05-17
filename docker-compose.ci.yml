@@ -4,21 +4,25 @@
 services:
   sitl:
     image: ${SITL_IMAGE:?SITL_IMAGE must be set}
-    networks:
-      - px4net
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x px4 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 90s
+      retries: 12
 
   tester:
     build:
       context: .
       dockerfile: docker/Dockerfile.tools
+    # Compartilha o network namespace do sitl: localhost do tester == localhost
+    # do sitl. PX4 SITL por padrão emite MAVLink em localhost (não broadcast),
+    # então essa é a única forma de o tester receber heartbeats sem reconfigurar
+    # PX4. Trade-off: depends_on com healthcheck ainda funciona, mas não pode
+    # ter networks: aqui (conflito com network_mode).
+    network_mode: "service:sitl"
     depends_on:
       sitl:
         condition: service_healthy
     environment:
-      - MAVLINK_URL=udpout://sitl:14556
-    networks:
-      - px4net
-
-networks:
-  px4net:
-    driver: bridge
+      - MAVLINK_URL=udpin:127.0.0.1:14540

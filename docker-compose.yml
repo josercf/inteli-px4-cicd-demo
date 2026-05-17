@@ -6,22 +6,17 @@ services:
       context: .
       dockerfile: docker/Dockerfile.sitl
     image: ghcr.io/josercf/px4-sitl:dev-local
-    networks:
-      - px4net
 
   tester:
     build:
       context: .
       dockerfile: docker/Dockerfile.tools
     image: ghcr.io/josercf/px4-tools:dev-local
+    # Shared netns com sitl (mesmo localhost). Ver comentário no
+    # docker-compose.ci.yml para detalhes.
+    network_mode: "service:sitl"
     depends_on:
       sitl:
         condition: service_healthy
     environment:
-      - MAVLINK_URL=udpout://sitl:14556
-    networks:
-      - px4net
-
-networks:
-  px4net:
-    driver: bridge
+      - MAVLINK_URL=udpin:127.0.0.1:14540
