@@ -11,13 +11,16 @@ WORKDIR /workspace
 # Quando o submódulo for atualizado (ADR-001 obriga novo ADR), atualizar a tag
 # abaixo também.
 ARG PX4_TAG=v1.16.2
-# Não usar --depth 1 no clone principal: o script Tools/px_update_git_header.py
-# do PX4 precisa de histórico mínimo + tags para gerar build_git_version.h via
-# git describe. Shallow clone causa IndexError. Submódulos do PX4 toleram shallow.
+# Sem --depth 1 em nenhum dos clones: o script src/lib/version/px_update_git_header.py
+# do PX4 precisa de:
+# 1) tags no repo principal → git describe (corrigido com --single-branch)
+# 2) tags no submódulo NuttX (linha 132 do script lista tags 'nuttx-X.Y.Z')
+# Shallow clone do NuttX retorna lista vazia de tags → IndexError no [-1].
+# Custo: ~1GB no clone, mas buildcache do GHCR amortiza nos PRs seguintes.
 RUN git clone --single-branch --branch ${PX4_TAG} \
       https://github.com/PX4/PX4-Autopilot.git && \
     cd PX4-Autopilot && \
-    git submodule update --init --recursive --depth 1
+    git submodule update --init --recursive
 
 WORKDIR /workspace/PX4-Autopilot
 
