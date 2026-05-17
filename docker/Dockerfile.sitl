@@ -1,7 +1,7 @@
 # PX4 SITL — apenas o autopiloto rodando, sem simulador gráfico.
 # PR #1 usa backend 'none' (sem Gazebo) para validar plumbing MAVLink.
 # PR #2 adiciona Gazebo Garden + modelo gz_x500 para missão real.
-FROM px4io/px4-dev-simulation-jammy:2024-08-08
+FROM px4io/px4-dev-simulation-jammy:2024-05-18
 
 WORKDIR /workspace
 
