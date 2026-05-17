@@ -11,7 +11,10 @@ WORKDIR /workspace
 # Quando o submódulo for atualizado (ADR-001 obriga novo ADR), atualizar a tag
 # abaixo também.
 ARG PX4_TAG=v1.16.2
-RUN git clone --depth 1 --branch ${PX4_TAG} \
+# Não usar --depth 1 no clone principal: o script Tools/px_update_git_header.py
+# do PX4 precisa de histórico mínimo + tags para gerar build_git_version.h via
+# git describe. Shallow clone causa IndexError. Submódulos do PX4 toleram shallow.
+RUN git clone --single-branch --branch ${PX4_TAG} \
       https://github.com/PX4/PX4-Autopilot.git && \
     cd PX4-Autopilot && \
     git submodule update --init --recursive --depth 1
