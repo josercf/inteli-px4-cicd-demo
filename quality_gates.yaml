@@ -1,0 +1,41 @@
+# Quality Gates do pipeline — thresholds versionados.
+#
+# PR #4 (Aula 10) transforma essas regras em gates obrigatórios: PR não merge
+# se qualquer gate falha. Antes do PR #4, métricas apareciam no PR como
+# informação; agora viram contrato.
+#
+# Cada seção mapeia 1:1 com um check do `tools/quality_gates.py`. Mudar
+# qualquer threshold aqui requer PR + justificativa no commit. ADR-005
+# documenta o processo de revisão.
+#
+# Hierarquia (baseline vs invariante) está em docs/testing-philosophy.md.
+
+# --------------------------------------------------------------------------- #
+# Coverage de testes unit (de tests/unit/*).
+# Reduzir esse threshold = sinal claro de PR que removeu testes sem substituir.
+# --------------------------------------------------------------------------- #
+coverage:
+  min_line_coverage: 0.80  # 80% — pragmático pra projeto em crescimento
+
+# --------------------------------------------------------------------------- #
+# Métricas de missão (extraídas pelo `tools/extract_metrics.py` → metrics.json).
+# Baseline thresholds — frouxos. PR #4 não tem ambição de cravar performance
+# ideal; tem ambição de detectar regressões grosseiras.
+# --------------------------------------------------------------------------- #
+mission_metrics:
+  max_trajectory_rms_error_m: 2.0       # RMS do erro de trajetória vs waypoints
+  max_acceleration_m_s2: 15.0            # alinhado com test_physical_invariants
+  max_mission_duration_s: 180            # missão square_50m baseline ~85s
+  min_altitude_stability_m: 0.5          # std máximo de altitude em cruzeiro
+  max_battery_drop_per_minute_pct: 8.0  # estimativa de consumo aceitável
+
+# --------------------------------------------------------------------------- #
+# Sonar Quality Gate (consultado via API do Sonar do instrutor).
+# `require_passed: true` = pipeline falha se Sonar reportar Quality Gate como
+# "ERROR". Quality Gate específico configurado no Sonar (default "Sonar Way").
+# --------------------------------------------------------------------------- #
+sonar:
+  require_quality_gate_passed: true
+  max_new_blocker_issues: 0
+  max_new_critical_issues: 0
+  max_new_security_hotspots_to_review: 0

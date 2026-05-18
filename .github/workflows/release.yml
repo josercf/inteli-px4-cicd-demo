@@ -1,0 +1,88 @@
+name: Release
+
+# Workflow disparado por tag git `v*` — produz o artefato flasheável (.px4)
+# pra hardware real (px4_fmu-v6x) e cria um GitHub Release com SBOM + checksum.
+#
+# Pré-requisitos:
+# - Tag git existe (ex.: git tag v0.1.0 && git push --tags)
+# - PR que originou a tag passou em todos os quality gates (PR #4)
+#
+# Diferença pra mission-test do CI: o CI builda IMAGEM SITL (rodar simulado).
+# release.yml builda BINÁRIO HARDWARE (.px4 pra Pixhawk físico). São saídas
+# distintas que compartilham o mesmo código-fonte PX4.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build-hardware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false  # Vamos clonar PX4 internamente como no Dockerfile
+
+      - name: Set up Python (pra ferramentas PX4)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build PX4 firmware para hardware (px4_fmu-v6x_default)
+        run: |
+          # Clone PX4 na mesma versão pinada (deve casar com submódulo).
+          git clone --single-branch --branch v1.16.2 \
+            https://github.com/PX4/PX4-Autopilot.git
+          cd PX4-Autopilot
+          git submodule update --init --recursive
+
+          # Setup deps do Ubuntu (script oficial PX4).
+          bash ./Tools/setup/ubuntu.sh --no-nuttx false --no-sim-tools true
+
+          # Build do target hardware.
+          make px4_fmu-v6x_default
+
+      - name: Locate firmware artifact
+        id: artifact
+        run: |
+          ARTIFACT=$(find PX4-Autopilot/build -name "*.px4" | head -1)
+          echo "Encontrado: $ARTIFACT"
+          echo "path=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          # Checksum
+          sha256sum "$ARTIFACT" > "${ARTIFACT}.sha256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }} — PX4 firmware
+          generate_release_notes: true
+          files: |
+            ${{ steps.artifact.outputs.path }}
+            ${{ steps.artifact.outputs.path }}.sha256
+          body: |
+            ## Release PX4 ${{ github.ref_name }}
+
+            Firmware compilado para `px4_fmu-v6x` a partir de PX4-Autopilot v1.16.2.
+
+            ### Verificação
+
+            ```
+            sha256sum -c <arquivo>.sha256
+            ```
+
+            ### O que está aqui
+
+            - `.px4`: binário flasheável (uso com QGroundControl ou `make upload`)
+            - `.sha256`: checksum SHA-256 do binário
+
+            ### Quality gates
+
+            Esta release só foi publicada porque o PR mergeado em `main` que originou
+            esta tag passou em todos os quality gates obrigatórios (vide PR #4 da
+            Aula 10 — `quality_gates.yaml`).

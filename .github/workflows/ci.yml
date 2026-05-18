@@ -15,6 +15,12 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/px4-sitl
 
+# PR #4 (Aula 10) refatorou pipeline de paralelo → sequencial fail-fast:
+# python-quality → sonar-scan → sitl-build → mission-test → quality-gates.
+# Trade-off: ~30s mais lento quando tudo passa, mas economiza ~25min de runner
+# self-hosted quando lint/sonar/build falham (não busca recursos cedo demais).
+# Decisão didática registrada no plano da Aula 10.
+
 jobs:
   python-quality:
     runs-on: ubuntu-latest
@@ -53,7 +59,8 @@ jobs:
   sonar-scan:
     needs: python-quality
     runs-on: ubuntu-latest
-    continue-on-error: true # PR #4 ativa enforcement (vide spec)
+    # PR #4 LIGOU enforcement — continue-on-error: false (default).
+    # Quality gate do Sonar agora bloqueia merge.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,6 +79,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   sitl-build:
+    needs: sonar-scan
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -105,11 +113,6 @@ jobs:
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   mission-test:
-    # Unifica o antigo deploy-dev (smoke) com o novo mission-test (PR #2):
-    # ambos rodavam o mesmo compose. Aqui executamos missão square_50m no
-    # SITL (jmavsim), extraímos KPIs e publicamos metrics.json + comentário
-    # no PR. Self-hosted (VM srv-simulador) — GitHub-hosted pendura no
-    # cleanup do jmavsim/Java.
     needs: sitl-build
     runs-on: [self-hosted, px4-sitl]
     timeout-minutes: 20
@@ -131,15 +134,12 @@ jobs:
           SITL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
           set +e
-          # Mesma estratégia do deploy-dev: shared netns + cleanup robusto.
-          # `tester` agora executa pytest tests/sitl (smoke + mission).
           docker compose -f docker-compose.ci.yml up \
             --build \
             --abort-on-container-exit \
             --exit-code-from tester \
             --timeout 5
           EXIT=$?
-          # Copia reports gerados pelo container tester pra workspace antes do down.
           docker compose -f docker-compose.ci.yml cp tester:/app/reports ./reports 2>/dev/null || true
           docker compose -f docker-compose.ci.yml kill || true
           docker compose -f docker-compose.ci.yml rm -f -v || true
@@ -159,7 +159,6 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const path = require('path');
             const metricsPath = 'reports/metrics.json';
             if (!fs.existsSync(metricsPath)) {
               console.log('reports/metrics.json não encontrado, skip comentário');
@@ -179,7 +178,87 @@ jobs:
               `| Maior queda bateria | ${m.max_battery_drop_pct}% |`,
               `| Amostras | ${m.n_samples} |`,
               '',
-              '_Quality gates obrigatórios entram no PR #4 (Aula 10)._'
+              '_PR #4: quality-gates obrigatórios ativos. Vide próximo step._'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+  quality-gates:
+    # Job NOVO do PR #4 (Aula 10): consome todos os artefatos anteriores e
+    # falha o pipeline se algum threshold versionado em quality_gates.yaml for
+    # violado. Bloqueia merge — protected branch deve exigir esse check.
+    needs: mission-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Download coverage XML
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-xml
+
+      - name: Download mission metrics
+        uses: actions/download-artifact@v4
+        with:
+          name: mission-metrics
+          path: reports/
+
+      - name: Evaluate quality gates
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+        run: |
+          python -m tools.quality_gates \
+            --gates quality_gates.yaml \
+            --metrics reports/metrics.json \
+            --coverage coverage.xml \
+            --output reports/quality_gates_result.json
+
+      - name: Upload quality gates result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gates-result
+          path: reports/quality_gates_result.json
+          if-no-files-found: warn
+
+      - name: Comment quality gates on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const p = 'reports/quality_gates_result.json';
+            if (!fs.existsSync(p)) {
+              console.log('quality_gates_result.json não encontrado, skip');
+              return;
+            }
+            const r = JSON.parse(fs.readFileSync(p, 'utf8'));
+            const emoji = r.all_passed ? '✅' : '❌';
+            const rows = r.results.map(g => `| ${g.passed ? '✅' : '❌'} | \`${g.name}\` | ${g.message} |`).join('\n');
+            const body = [
+              `## ${emoji} Quality Gates — ${r.summary}`,
+              '',
+              '| | Gate | Detalhe |',
+              '|---|---|---|',
+              rows,
             ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
