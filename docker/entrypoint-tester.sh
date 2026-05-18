@@ -13,7 +13,10 @@ set -euo pipefail
 if [ "${MAVSDK_SERVER_DISABLE:-0}" != "1" ]; then
   SERVER_BIN=$(python3 -c 'import mavsdk, os; print(os.path.join(os.path.dirname(mavsdk.__file__), "bin", "mavsdk_server"))')
   MAVSDK_PORT="${MAVSDK_SERVER_PORT:-50051}"
-  MAVLINK_ADDR="${MAVLINK_URL:-udpin://0.0.0.0:14540}"
+  # mavsdk_server v2.12 (embarcado no mavsdk-python 2.8.4) NÃO aceita schema
+  # 'udpin://'. Use 'udp://:14540' legacy. Variável separada do MAVLINK_URL
+  # (que pode estar em formato 'udpin:127.0.0.1:14540' pra pymavlink).
+  MAVLINK_ADDR="${MAVSDK_SERVER_URL:-udp://:14540}"
 
   echo "[entrypoint] starting mavsdk_server on port ${MAVSDK_PORT} listening ${MAVLINK_ADDR}"
   "${SERVER_BIN}" -p "${MAVSDK_PORT}" "${MAVLINK_ADDR}" >/tmp/mavsdk_server.log 2>&1 &

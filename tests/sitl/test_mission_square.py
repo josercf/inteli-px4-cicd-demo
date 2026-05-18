@@ -52,16 +52,19 @@ def test_metrics_within_baseline_thresholds() -> None:
     como sanity check: se algo estiver muito fora, é erro real (não cabe
     em variabilidade normal do simulador).
     """
-    # Procura .ulg mais recente em /tmp/ulog ou no working dir (PX4 escreve em
-    # ./build/px4_sitl_default/rootfs/log/<date>/<time>.ulg). Caminho exato
-    # depende do PX4_LOG_DIR ou estrutura do container.
+    # PX4 SITL escreve ULogs em build/px4_sitl_default/rootfs/log/<date>/<time>.ulg
+    # dentro do container sitl. Esse path está mapeado em $ULOG_DIR no tester via
+    # named volume `ulogs` (vide docker-compose.ci.yml). Default /ulogs.
+    ulog_dir = Path(os.environ.get("ULOG_DIR", "/ulogs"))
+    if not ulog_dir.is_dir():
+        pytest.skip(f"ULOG_DIR não existe: {ulog_dir}")
     candidates = sorted(
-        Path("/").glob("**/build/px4_sitl_default/rootfs/log/**/*.ulg"),
+        ulog_dir.rglob("*.ulg"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     if not candidates:
-        pytest.skip("nenhum .ulg encontrado para extração de métricas")
+        pytest.skip(f"nenhum .ulg encontrado em {ulog_dir}")
     latest = candidates[0]
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
