@@ -40,15 +40,41 @@ async def _wait_connected(drone: System, timeout_s: float = 30.0) -> None:
     await asyncio.wait_for(loop(), timeout=timeout_s)
 
 
-async def _wait_global_position(drone: System, timeout_s: float = 60.0) -> None:
-    """Espera GPS lock + home position (necessário pra armar)."""
+async def _wait_armable(drone: System, timeout_s: float = 90.0) -> None:
+    """Espera todos os checks de saúde necessários pra armar.
+
+    Inclui: GPS lock, home position, local position (EKF2 convergiu) e
+    armable flag. Sem isso o action.arm() levanta COMMAND_DENIED.
+    """
 
     async def loop() -> None:
         async for health in drone.telemetry.health():
-            if health.is_global_position_ok and health.is_home_position_ok:
+            if (
+                health.is_global_position_ok
+                and health.is_home_position_ok
+                and health.is_local_position_ok
+                and health.is_armable
+            ):
                 return
 
     await asyncio.wait_for(loop(), timeout=timeout_s)
+
+
+async def _arm_with_retry(drone: System, attempts: int = 5, delay_s: float = 3.0) -> None:
+    """Tenta arm() com retry — em SITL com jmavsim, preflight pode reprovar
+    transiente nos primeiros segundos mesmo após is_armable=True."""
+    from mavsdk.action import ActionError
+
+    last_err: Exception | None = None
+    for i in range(1, attempts + 1):
+        try:
+            await drone.action.arm()
+            return
+        except ActionError as e:
+            last_err = e
+            LOG.warning("arm() tentativa %d/%d falhou: %s", i, attempts, e)
+            await asyncio.sleep(delay_s)
+    raise RuntimeError(f"arm() falhou em {attempts} tentativas: {last_err}")
 
 
 def _build_mission_items(m: Mission) -> list[Any]:
@@ -96,8 +122,8 @@ async def _execute_mission(drone: System, m: Mission, timeout_s: float) -> None:
 
     await drone.mission.set_return_to_launch_after_mission(has_rtl)
     await drone.mission.upload_mission(MissionPlan(items))
-    LOG.info("upload OK; arming")
-    await drone.action.arm()
+    LOG.info("upload OK; arming (com retry)")
+    await _arm_with_retry(drone)
     LOG.info("armed; starting mission")
     await drone.mission.start_mission()
     LOG.info("mission started; waiting completion (timeout=%ds)", int(timeout_s))
@@ -127,9 +153,9 @@ async def run(
     LOG.info("connecting MAVSDK to %s", system_address)
     await drone.connect(system_address=system_address)
     await _wait_connected(drone, timeout_s=30)
-    LOG.info("MAVLink heartbeat received; waiting for global position")
-    await _wait_global_position(drone, timeout_s=60)
-    LOG.info("global position ok")
+    LOG.info("MAVLink heartbeat received; waiting for armable health")
+    await _wait_armable(drone, timeout_s=90)
+    LOG.info("armable: all health checks ok")
 
     try:
         await _execute_mission(drone, m, timeout_s=m.max_duration_s)
