@@ -104,54 +104,16 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
-  deploy-dev:
-    needs: sitl-build
-    # Runner self-hosted (VM srv-simulador): GitHub-hosted ficava preso ao
-    # parar jmavsim/Gazebo (não respondem rápido a SIGTERM). Self-hosted permite
-    # cleanup mais robusto e cache local da imagem SITL.
-    runs-on: [self-hosted, px4-sitl]
-    timeout-minutes: 15
-    environment: dev
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull SITL image
-        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Run smoke test (compose)
-        env:
-          SITL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        run: |
-          set +e
-          docker compose -f docker-compose.ci.yml up \
-            --build \
-            --abort-on-container-exit \
-            --exit-code-from tester \
-            --timeout 5
-          EXIT=$?
-          docker compose -f docker-compose.ci.yml kill || true
-          docker compose -f docker-compose.ci.yml rm -f -v || true
-          exit $EXIT
-
-      - name: SITL logs on failure
-        if: failure()
-        run: docker compose -f docker-compose.ci.yml logs sitl 2>&1 | tail -100 || true
-
   mission-test:
-    # Job novo do PR #2: executa missão square_50m no SITL Gazebo, extrai
-    # KPIs (duração, altitude, accel, bateria) e publica metrics.json.
-    needs: [sitl-build, deploy-dev]
+    # Unifica o antigo deploy-dev (smoke) com o novo mission-test (PR #2):
+    # ambos rodavam o mesmo compose. Aqui executamos missão square_50m no
+    # SITL (jmavsim), extraímos KPIs e publicamos metrics.json + comentário
+    # no PR. Self-hosted (VM srv-simulador) — GitHub-hosted pendura no
+    # cleanup do jmavsim/Java.
+    needs: sitl-build
     runs-on: [self-hosted, px4-sitl]
     timeout-minutes: 20
+    environment: dev
     steps:
       - uses: actions/checkout@v4
         with:
