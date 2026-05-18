@@ -1,40 +1,39 @@
 """Teste SITL: executa missão square_50m e valida métricas baseline.
 
-PR #3 refatorou esse arquivo pra usar fixtures (conftest.py) e remover
-duplicação. Comparar com a versão original do PR #2 (git blame) mostra:
-- Setup MAVSDK extraído pra fixture (DRY).
-- _wait_armable extraído pra fixture (era inline).
-- Path do .ulg extraído pra fixture (era glob duplicado).
+PR #3 refatorou esse arquivo pra usar fixture `square_50m_mission_completed`
+do conftest (session-scoped). Antes cada teste rodava sua própria missão e
+PX4 SITL não re-arma na 2ª — ver issue de timeout no PR #3 antes do fix.
 """
 
 import json
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 pytestmark = pytest.mark.sitl
 
 
-def test_square_50m_mission_completes(run_mission: object) -> None:
-    """Missão square_50m executa do início ao fim sem erro.
+def test_square_50m_mission_completes(square_50m_mission_completed: dict[str, Any]) -> None:
+    """Smoke: missão square_50m executa do início ao fim sem erro.
 
-    O fixture `run_mission` invoca tools/run_mission.py como subprocess e
-    falha o teste com diagnóstico se exit code != 0.
+    A própria fixture já validou exit code 0 e .ulg gerado, então só
+    confirmamos que recebemos os artifacts esperados.
     """
-    run_mission("missions/square_50m.yaml")  # type: ignore[operator]
+    assert square_50m_mission_completed["result"].returncode == 0
+    assert square_50m_mission_completed["ulog"].exists()
 
 
 def test_metrics_within_baseline_thresholds(
-    run_mission: object, latest_ulog_path: Path, repo_root: Path, tmp_path: Path
+    square_50m_mission_completed: dict[str, Any], repo_root: Path, tmp_path: Path
 ) -> None:
     """Após missão, KPIs extraídos do .ulg ficam em janela baseline.
 
-    Thresholds são frouxos no PR #3 (informativos). PR #4 aperta via
+    Thresholds frouxos no PR #3 (informativos). PR #4 aperta via
     quality_gates.yaml e bloqueia merge.
     """
-    import subprocess
-
-    run_mission("missions/square_50m.yaml")  # type: ignore[operator]
+    ulog_path = square_50m_mission_completed["ulog"]
 
     output = tmp_path / "metrics.json"
     result = subprocess.run(
@@ -43,7 +42,7 @@ def test_metrics_within_baseline_thresholds(
             "-m",
             "tools.extract_metrics",
             "--ulog",
-            str(latest_ulog_path),
+            str(ulog_path),
             "--output",
             str(output),
         ],

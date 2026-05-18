@@ -190,3 +190,45 @@ def latest_ulog_path(ulog_dir: Path) -> Path:
     if not candidates:
         pytest.skip(f"nenhum .ulg encontrado em {ulog_dir}")
     return candidates[0]
+
+
+# --------------------------------------------------------------------------- #
+# Cache da missão: roda UMA vez por sessão, vários testes consomem o mesmo
+# resultado. PX4 SITL não reinicializa entre missões sem reset completo do
+# container — chamar run_mission 2x na mesma sessão faz a 2ª travar no arm.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="session")
+def square_50m_mission_completed(
+    repo_root: Path, ulog_dir: Path
+) -> dict[str, Path | subprocess.CompletedProcess[str]]:
+    """Executa a missão square_50m UMA vez por sessão de testes.
+
+    Returns:
+        dict com:
+        - 'result': CompletedProcess do CLI run_mission
+        - 'ulog': Path do .ulg gerado
+
+    Falha (pytest.fail) se a missão não completar — invalida todos os testes
+    dependentes, que é o comportamento desejado.
+    """
+    result = _run_mission(repo_root, repo_root / "missions" / "square_50m.yaml", timeout_s=300)
+    if result.returncode != 0:
+        pytest.fail(
+            f"square_50m mission falhou (exit={result.returncode}).\n"
+            f"stdout: {result.stdout[-1500:]}\n"
+            f"stderr: {result.stderr[-1500:]}"
+        )
+
+    if not ulog_dir.is_dir():
+        pytest.fail(f"ulog_dir não existe após missão: {ulog_dir}")
+    candidates = sorted(
+        ulog_dir.rglob("*.ulg"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        pytest.fail(f"missão completou mas nenhum .ulg em {ulog_dir}")
+
+    return {"result": result, "ulog": candidates[0]}

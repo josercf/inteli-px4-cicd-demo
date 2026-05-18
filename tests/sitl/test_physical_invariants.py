@@ -8,12 +8,14 @@ regras que SEMPRE têm que valer, independente da missão:
 - Drone permanece dentro do geofence configurado.
 - Bateria não tem queda anômala (>15% num único intervalo) indicando crash.
 
-Esses testes são parametrizados por missão: se o invariante quebra em alguma
-missão, é regressão real.
+PR #3: todos os invariantes usam fixture `square_50m_mission_completed`
+session-scoped do conftest — missão roda 1× e todos os testes consomem o
+mesmo .ulg. Quando tivermos múltiplas missões, parametrizamos novamente.
 """
 
 import math
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -22,23 +24,13 @@ from libs.drone_modeling.mission import load_mission
 pytestmark = pytest.mark.sitl
 
 
-# --------------------------------------------------------------------------- #
-# Configuração das missões disponíveis. Adicionar nova missão = nova linha.
-# --------------------------------------------------------------------------- #
-
-MISSIONS = [
-    pytest.param("missions/square_50m.yaml", id="square_50m"),
-    # Outras missões entram aqui conforme repo cresce: line_30m, hover_test, etc.
-]
-
-
-def _extract_full_telemetry(repo_root: Path, ulog_path: Path) -> dict:
-    """Extrai métricas + lê arrays brutos do ULog para asserções detalhadas."""
+def _extract_full_telemetry(ulog_path: Path) -> dict:
+    """Extrai séries temporais brutas do ULog para asserções detalhadas."""
     from pyulog import ULog
 
     log = ULog(str(ulog_path))
 
-    def get_topic(name: str):
+    def get_topic(name: str) -> Any:
         for d in log.data_list:
             if d.name == name:
                 return d
@@ -48,7 +40,7 @@ def _extract_full_telemetry(repo_root: Path, ulog_path: Path) -> dict:
         "altitudes_m": [],
         "accel_modules": [],
         "battery_pct": [],
-        "positions_ne": [],  # (north, east) em m
+        "positions_ne": [],
     }
 
     pos = get_topic("vehicle_local_position")
@@ -74,32 +66,19 @@ def _extract_full_telemetry(repo_root: Path, ulog_path: Path) -> dict:
     return out
 
 
-@pytest.fixture
-def mission_telemetry(
-    request: pytest.FixtureRequest,
-    run_mission: object,
-    latest_ulog_path: Path,
-    repo_root: Path,
-) -> dict:
-    """Executa a missão indicada via parametrize e retorna telemetria bruta."""
-    mission_yaml = request.param
-    run_mission(mission_yaml)  # type: ignore[operator]
-    return _extract_full_telemetry(repo_root, latest_ulog_path)
+@pytest.fixture(scope="session")
+def square_50m_telemetry(square_50m_mission_completed: dict[str, Any]) -> dict:
+    """Telemetria bruta extraída UMA vez por sessão a partir do .ulg da missão."""
+    return _extract_full_telemetry(square_50m_mission_completed["ulog"])
 
 
-# --------------------------------------------------------------------------- #
-# Invariantes — cada teste valida UMA regra. Parametrizado por missão.
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("mission_telemetry", MISSIONS, indirect=True)
-def test_max_acceleration_within_hardware_limit(mission_telemetry: dict) -> None:
+def test_max_acceleration_within_hardware_limit(square_50m_telemetry: dict) -> None:
     """Aceleração nunca excede 15 m/s² (limite mecânico nominal do quadrotor x500).
 
     Excede = motores reagindo agressivo demais → desgaste prematuro de hardware
     no campo. Valor 15 está alinhado com PX4 default MC_TPA_RATE_P.
     """
-    accels = mission_telemetry["accel_modules"]
+    accels = square_50m_telemetry["accel_modules"]
     if not accels:
         pytest.skip("sem amostras de aceleração no ULog")
     max_accel = max(accels)
@@ -109,10 +88,9 @@ def test_max_acceleration_within_hardware_limit(mission_telemetry: dict) -> None
     )
 
 
-@pytest.mark.parametrize("mission_telemetry", MISSIONS, indirect=True)
-def test_altitude_never_negative(mission_telemetry: dict) -> None:
+def test_altitude_never_negative(square_50m_telemetry: dict) -> None:
     """Drone nunca passa abaixo do solo (altitude < -0.5m indica crash ou bug NED)."""
-    altitudes = mission_telemetry["altitudes_m"]
+    altitudes = square_50m_telemetry["altitudes_m"]
     if not altitudes:
         pytest.skip("sem amostras de altitude no ULog")
     min_alt = min(altitudes)
@@ -123,21 +101,12 @@ def test_altitude_never_negative(mission_telemetry: dict) -> None:
     )
 
 
-@pytest.mark.parametrize("mission_telemetry", MISSIONS, indirect=True)
-def test_position_within_geofence(mission_telemetry: dict) -> None:
-    """Drone permanece dentro do geofence definido na missão.
-
-    Lê o geofence_radius_m da missão correspondente e valida que nenhuma
-    posição (norte, leste) ficou fora desse raio do home (0,0 em NED).
-    """
-    # Buscar a missão usada por essa parametrização — request.param da fixture
-    # não está exposto aqui; assumimos square_50m por enquanto. Quando MISSIONS
-    # crescer, mover essa lookup pra fixture.
-    repo_root = Path(__file__).resolve().parents[2]
+def test_position_within_geofence(square_50m_telemetry: dict, repo_root: Path) -> None:
+    """Drone permanece dentro do geofence definido na missão."""
     mission = load_mission(repo_root / "missions" / "square_50m.yaml")
     geofence = mission.geofence_radius_m
 
-    positions = mission_telemetry["positions_ne"]
+    positions = square_50m_telemetry["positions_ne"]
     if not positions:
         pytest.skip("sem amostras de posição no ULog")
 
@@ -148,14 +117,9 @@ def test_position_within_geofence(mission_telemetry: dict) -> None:
     )
 
 
-@pytest.mark.parametrize("mission_telemetry", MISSIONS, indirect=True)
-def test_no_anomalous_battery_drop(mission_telemetry: dict) -> None:
-    """Bateria não cai mais que 15% num único intervalo entre amostras.
-
-    Quedas grandes entre amostras consecutivas indicam: crash sensor, falha
-    elétrica simulada, ou bug no logger. Em voo normal, queda max ~1% por amostra.
-    """
-    battery = mission_telemetry["battery_pct"]
+def test_no_anomalous_battery_drop(square_50m_telemetry: dict) -> None:
+    """Bateria não cai mais que 15% num único intervalo entre amostras."""
+    battery = square_50m_telemetry["battery_pct"]
     if len(battery) < 2:
         pytest.skip("amostras insuficientes de bateria no ULog")
     max_drop = max(battery[i - 1] - battery[i] for i in range(1, len(battery)))
