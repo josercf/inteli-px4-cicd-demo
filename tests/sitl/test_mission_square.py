@@ -6,8 +6,6 @@ PX4 SITL não re-arma na 2ª — ver issue de timeout no PR #3 antes do fix.
 """
 
 import json
-import subprocess
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -26,35 +24,18 @@ def test_square_50m_mission_completes(square_50m_mission_completed: dict[str, An
 
 
 def test_metrics_within_baseline_thresholds(
-    square_50m_mission_completed: dict[str, Any], repo_root: Path, tmp_path: Path
+    square_50m_mission_completed: dict[str, Any],
 ) -> None:
     """Após missão, KPIs extraídos do .ulg ficam em janela baseline.
 
     Thresholds frouxos no PR #3 (informativos). PR #4 aperta via
     quality_gates.yaml e bloqueia merge.
+
+    PR #4: fixture extrai métricas para reports/metrics.json (path estável).
     """
-    ulog_path = square_50m_mission_completed["ulog"]
-
-    output = tmp_path / "metrics.json"
-    result = subprocess.run(
-        [
-            "python",
-            "-m",
-            "tools.extract_metrics",
-            "--ulog",
-            str(ulog_path),
-            "--output",
-            str(output),
-        ],
-        cwd=repo_root,
-        timeout=60,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"extract_metrics falhou: {result.stderr}"
-
-    metrics = json.loads(output.read_text())
+    metrics_path = square_50m_mission_completed["metrics"]
+    assert metrics_path.is_file(), f"metrics.json não encontrado: {metrics_path}"
+    metrics = json.loads(metrics_path.read_text())
 
     # Baseline thresholds — generosos. Pra detectar valores impossíveis,
     # não pra cravar performance ideal.

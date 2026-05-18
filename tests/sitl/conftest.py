@@ -203,15 +203,21 @@ def latest_ulog_path(ulog_dir: Path) -> Path:
 def square_50m_mission_completed(
     repo_root: Path, ulog_dir: Path
 ) -> dict[str, Path | subprocess.CompletedProcess[str]]:
-    """Executa a missão square_50m UMA vez por sessão de testes.
+    """Executa a missão square_50m UMA vez por sessão e extrai métricas.
 
     Returns:
         dict com:
         - 'result': CompletedProcess do CLI run_mission
         - 'ulog': Path do .ulg gerado
+        - 'metrics': Path do reports/metrics.json extraído
 
     Falha (pytest.fail) se a missão não completar — invalida todos os testes
     dependentes, que é o comportamento desejado.
+
+    PR #4: extrai metrics aqui (não no teste) para garantir que reports/metrics.json
+    exista no WORKDIR estável (/app/reports/ no container), permitindo que o job
+    mission-test do CI faça `docker compose cp tester:/app/reports ./reports` e
+    o quality-gates consuma esse artefato.
     """
     result = _run_mission(repo_root, repo_root / "missions" / "square_50m.yaml", timeout_s=300)
     if result.returncode != 0:
@@ -231,4 +237,31 @@ def square_50m_mission_completed(
     if not candidates:
         pytest.fail(f"missão completou mas nenhum .ulg em {ulog_dir}")
 
-    return {"result": result, "ulog": candidates[0]}
+    ulog = candidates[0]
+    reports_dir = repo_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = reports_dir / "metrics.json"
+    extract = subprocess.run(
+        [
+            "python",
+            "-m",
+            "tools.extract_metrics",
+            "--ulog",
+            str(ulog),
+            "--output",
+            str(metrics_path),
+        ],
+        cwd=repo_root,
+        timeout=60,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if extract.returncode != 0:
+        pytest.fail(
+            f"extract_metrics falhou (exit={extract.returncode})\n"
+            f"stdout: {extract.stdout[-1500:]}\n"
+            f"stderr: {extract.stderr[-1500:]}"
+        )
+
+    return {"result": result, "ulog": ulog, "metrics": metrics_path}
