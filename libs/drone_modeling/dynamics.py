@@ -13,3 +13,16 @@ def compute_thrust(mass: float, acceleration: float) -> float:
     if mass < 0:
         raise ValueError("mass must be non-negative")
     return mass * acceleration
+
+def compute_weight(mass: float) -> float:
+    """Calcula peso (N) para massa (kg) dada.
+
+    Peso é força gravitacional: W = m * g, onde g ≈ 9.81 m/s² na Terra.
+
+    Raises:
+        ValueError: se mass for negativa.
+    """
+    if mass < 0:
+        raise ValueError("mass must be non-negative")
+    g = 9.81
+    return mass * g
