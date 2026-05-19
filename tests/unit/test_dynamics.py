@@ -2,6 +2,7 @@
 
 import pytest
 
+from libs.drone_modeling import dynamics
 from libs.drone_modeling.dynamics import compute_thrust
 
 
@@ -18,3 +19,15 @@ class TestComputeThrust:
     def test_rejects_negative_mass(self) -> None:
         with pytest.raises(ValueError, match="mass must be non-negative"):
             compute_thrust(mass=-1.0, acceleration=9.81)
+
+
+class TestComputeWeight:
+    def test_uses_standard_gravity_by_default(self) -> None:
+        assert dynamics.compute_weight(mass=2.0) == pytest.approx(19.62)
+
+    def test_allows_custom_gravity(self) -> None:
+        assert dynamics.compute_weight(mass=3.0, gravity=1.62) == pytest.approx(4.86)
+
+    def test_rejects_negative_mass(self) -> None:
+        with pytest.raises(ValueError, match="mass must be non-negative"):
+            dynamics.compute_weight(mass=-1.0)
