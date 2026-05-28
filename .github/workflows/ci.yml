@@ -187,11 +187,31 @@ jobs:
               body
             });
 
+  manual-approval:
+    # Gate humano entre validação automática (mission-test) e o veredito dos
+    # quality-gates. Força a aula a pausar e discutir o resumo de métricas
+    # antes do enforcement. Configurado como required reviewers do environment
+    # `quality-review` (josercf + hermanopoj). ADR-008 cobre a decisão.
+    # Em push direto pra main esse job é skipped (gates seguem rodando) — só
+    # bloqueia em PR, que é onde a discussão de aula acontece.
+    needs: mission-test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: quality-review
+    timeout-minutes: 60
+    steps:
+      - name: Registrar aprovação
+        run: |
+          echo "Aprovação manual concedida por @${{ github.actor }} em $(date -u +%FT%TZ)"
+
   quality-gates:
     # Job NOVO do PR #4 (Aula 10): consome todos os artefatos anteriores e
     # falha o pipeline se algum threshold versionado em quality_gates.yaml for
     # violado. Bloqueia merge — protected branch deve exigir esse check.
-    needs: mission-test
+    # Depende de manual-approval em PR; em push pra main o approval é skipped
+    # mas quality-gates continua rodando.
+    needs: [mission-test, manual-approval]
+    if: ${{ always() && needs.mission-test.result == 'success' && (needs.manual-approval.result == 'success' || needs.manual-approval.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
