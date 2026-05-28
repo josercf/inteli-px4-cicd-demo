@@ -15,11 +15,11 @@ Robert Martin, *Clean Code*. Testes devem ser:
 | **S**elf-validating | Pass/fail binário, sem inspeção manual | `pytest.fail()` com diagnóstico embutido. Mensagens explicam *qual invariante quebrou e por quê*. |
 | **T**imely | Escritos junto com (ou antes do) código | TDD: cada lib (geometry, mission, extract_metrics) tem teste vermelho → verde → refactor. |
 
-## Pirâmide vs Trofeu
+## Pirâmide vs Troféu
 
 **Pirâmide clássica** (Martin Fowler, 2012): muitos unit, alguns integration, pouco e2e.
 
-**Padrão Trofeu** (Kent Dodds, 2018): poucos unit, *muitos integration*, alguns e2e, base de static analysis.
+**Padrão Troféu** (Kent Dodds, 2018): poucos unit, *muitos integration*, alguns e2e, base de static analysis.
 
 ### Nosso compromisso
 
@@ -135,7 +135,7 @@ Demo cobre 1-5. PR #4 (Aula 10) transforma 4 e 5 em **gates obrigatórios**
 | Invariantes físicos | A cada PR (junto com SITL) | reusa missão | mesmo custo do SITL |
 
 Se rodar tudo a cada commit do dev seria caro demais (8min de CI por commit).
-Por isso unit roda ofuscado no `pre-commit` local e SITL só roda em push pro
+Por isso unit roda localmente no `pre-commit` e SITL só roda em push pro
 PR. Trade-off feedback rápido × custo de recurso.
 
 ## Critérios pra "esse teste tem valor?"
@@ -144,7 +144,7 @@ Antes de adicionar um teste novo, perguntar:
 
 1. **Que regressão real esse teste pegaria?** Se não souber dar um exemplo
    concreto, talvez seja teste decorativo.
-2. **Vai falsefar com mudanças não-relacionadas?** Teste muito acoplado a
+2. **Vai falhar com falso positivo em mudanças não-relacionadas?** Teste muito acoplado a
    detalhes de implementação fica vermelho a cada refactor.
 3. **Quando falhar, a mensagem ensina o que mudar?** Stack trace genérico
    força debugger; mensagem específica força fix imediato.

@@ -25,8 +25,8 @@ ENV PYTHONPATH=/app
 # fazer upload de missão sem o bug do PR #1) e depois executa o CMD.
 ENTRYPOINT ["/usr/local/bin/entrypoint-tester.sh"]
 
-# Default: rodar teste de missão (PR #2). test_connection.py é o smoke do
-# PR #1 (pymavlink heartbeat), removido do default porque conflita com o
-# mavsdk_server por bind na mesma porta UDP 14540. Rodar standalone:
+# Default: rodar baseline + invariantes físicos do fluxo SITL. test_connection.py
+# é o smoke do PR #1 (pymavlink heartbeat), removido do default porque conflita
+# com o mavsdk_server por bind na mesma porta UDP 14540. Rodar standalone:
 #   MAVSDK_SERVER_DISABLE=1 pytest tests/sitl/test_connection.py
-CMD ["pytest", "tests/sitl/test_mission_square.py", "-v", "-m", "sitl"]
+CMD ["pytest", "tests/sitl/test_mission_square.py", "tests/sitl/test_physical_invariants.py", "-v", "-m", "sitl"]
