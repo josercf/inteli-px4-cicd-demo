@@ -1,0 +1,39 @@
+# OpenChoreo ComponentRelease — manifesto conceitual.
+#
+# Vide openchoreo/component.yaml + docs/adrs/ADR-002 pra contexto.
+#
+# Em produção, este arquivo seria atualizado a cada novo `dev-<sha>` validado,
+# e o OpenChoreo gateway promoveria entre environments com aprovação humana.
+apiVersion: delivery.choreo.dev/v1alpha1
+kind: ComponentRelease
+metadata:
+  name: px4-firmware-release
+  labels:
+    project: inteli-px4-cicd-demo
+spec:
+  componentRef:
+    name: px4-firmware
+  image:
+    repository: ghcr.io/josercf/px4-sitl
+    # tag atualizada automaticamente pelo CI quando um commit no main passa
+    # nos quality gates (PR #4). Substituído via sed no workflow ou via
+    # OpenChoreo Operator + GitOps puxando do GHCR.
+    tag: latest
+  rolloutStrategy:
+    type: RollingUpdate
+    maxUnavailable: 0
+    maxSurge: 1
+  environments:
+    - name: dev
+      autoPromote: true
+    - name: staging
+      autoPromote: false
+      requiresApproval: true
+      approvers:
+        - team:qa
+    - name: prod
+      autoPromote: false
+      requiresApproval: true
+      approvers:
+        - team:sre
+        - team:security
