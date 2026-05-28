@@ -26,7 +26,7 @@ def test_square_50m_mission_completes(square_50m_mission_completed: dict[str, An
 
 
 def test_metrics_within_baseline_thresholds(
-    square_50m_mission_completed: dict[str, Any], repo_root: Path, tmp_path: Path
+    square_50m_mission_completed: dict[str, Any], repo_root: Path
 ) -> None:
     """Após missão, KPIs extraídos do .ulg ficam em janela baseline.
 
@@ -35,7 +35,9 @@ def test_metrics_within_baseline_thresholds(
     """
     ulog_path = square_50m_mission_completed["ulog"]
 
-    output = tmp_path / "metrics.json"
+    reports_dir = repo_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    output = reports_dir / "metrics.json"
     result = subprocess.run(
         [
             "python",
@@ -55,7 +57,6 @@ def test_metrics_within_baseline_thresholds(
     assert result.returncode == 0, f"extract_metrics falhou: {result.stderr}"
 
     metrics = json.loads(output.read_text())
-
     # Baseline thresholds — generosos. Pra detectar valores impossíveis,
     # não pra cravar performance ideal.
     assert (

@@ -16,7 +16,7 @@ Apoio ao instrutor para o walkthrough ao vivo do PR #2 dentro da aula 08
 - [ ] Confirmar que o runner self-hosted `srv-simulador` está online (visível em Settings → Actions → Runners).
 - [ ] Ter terminal aberto, conectado via SSH na VM:
   ```
-  ssh -i ~/Downloads/srv-simulador_key.pem azureuser@20.226.17.227
+  ssh -i ~/Downloads/<runner-key>.pem <runner-user>@<runner-host>
   ```
   Pra mostrar `docker images` + `docker ps` em vivo se alguém perguntar onde a imagem mora.
 

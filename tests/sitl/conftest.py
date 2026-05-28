@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -63,7 +63,9 @@ def repo_root() -> Path:
 
 
 @pytest.fixture
-async def mavsdk_system(mavsdk_server_host: str, mavsdk_server_port: int) -> AsyncIterator[System]:
+async def mavsdk_system(
+    mavsdk_server_host: str, mavsdk_server_port: int, mavlink_url: str
+) -> AsyncIterator[System]:
     """MAVSDK System conectado e armable (mas NÃO armado ainda).
 
     Yields:
@@ -75,7 +77,7 @@ async def mavsdk_system(mavsdk_server_host: str, mavsdk_server_port: int) -> Asy
     from mavsdk import System
 
     drone = System(mavsdk_server_address=mavsdk_server_host, port=mavsdk_server_port)
-    await drone.connect(system_address="udpin://0.0.0.0:14540")
+    await drone.connect(system_address=mavlink_url)
 
     await _wait_connection(drone, timeout_s=30)
     await _wait_armable(drone, timeout_s=90)
@@ -124,7 +126,12 @@ async def _wait_armable(drone: System, timeout_s: float) -> None:
 
 
 def _run_mission(
-    repo_root: Path, mission_yaml: Path, timeout_s: int
+    repo_root: Path,
+    mission_yaml: Path,
+    timeout_s: int,
+    mavsdk_server_host: str,
+    mavsdk_server_port: int,
+    mavlink_url: str,
 ) -> subprocess.CompletedProcess[str]:
     """Executa run_mission.py CLI. Síncrono — cada chamada espera missão fechar."""
     return subprocess.run(
@@ -134,6 +141,12 @@ def _run_mission(
             "tools.run_mission",
             "--mission",
             str(mission_yaml),
+            "--mavsdk-server",
+            mavsdk_server_host,
+            "--mavsdk-port",
+            str(mavsdk_server_port),
+            "--system-address",
+            mavlink_url,
         ],
         cwd=repo_root,
         timeout=timeout_s,
@@ -144,14 +157,18 @@ def _run_mission(
 
 
 @pytest.fixture
-def run_mission(repo_root: Path) -> Any:
+def run_mission(
+    repo_root: Path, mavsdk_server_host: str, mavsdk_server_port: int, mavlink_url: str
+) -> Any:
     """Factory fixture: retorna função que executa missão arbitrária."""
 
     def _factory(yaml_path: str | Path, timeout_s: int = 300) -> subprocess.CompletedProcess[str]:
         path = Path(yaml_path)
         if not path.is_absolute():
             path = repo_root / path
-        result = _run_mission(repo_root, path, timeout_s)
+        result = _run_mission(
+            repo_root, path, timeout_s, mavsdk_server_host, mavsdk_server_port, mavlink_url
+        )
         if result.returncode != 0:
             pytest.fail(
                 f"run_mission falhou (exit={result.returncode}) "
@@ -162,19 +179,6 @@ def run_mission(repo_root: Path) -> Any:
         return result
 
     return _factory
-
-
-@pytest.fixture
-def latest_ulog(ulog_dir: Path) -> Iterator[Path]:
-    """Retorna o .ulg mais recente após o teste terminar.
-
-    Importante: este fixture é called após o teste rodar a missão. PX4 escreve
-    o log durante a missão; pegamos o mais recente por mtime depois.
-    """
-    yield  # roda o teste primeiro
-
-    # Note: este pattern de yield-without-value não funciona pra retornar valor.
-    # Use `latest_ulog_path` abaixo se precisar do path explícito.
 
 
 @pytest.fixture
@@ -201,7 +205,11 @@ def latest_ulog_path(ulog_dir: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def square_50m_mission_completed(
-    repo_root: Path, ulog_dir: Path
+    repo_root: Path,
+    ulog_dir: Path,
+    mavsdk_server_host: str,
+    mavsdk_server_port: int,
+    mavlink_url: str,
 ) -> dict[str, Path | subprocess.CompletedProcess[str]]:
     """Executa a missão square_50m UMA vez por sessão de testes.
 
@@ -213,7 +221,14 @@ def square_50m_mission_completed(
     Falha (pytest.fail) se a missão não completar — invalida todos os testes
     dependentes, que é o comportamento desejado.
     """
-    result = _run_mission(repo_root, repo_root / "missions" / "square_50m.yaml", timeout_s=300)
+    result = _run_mission(
+        repo_root,
+        repo_root / "missions" / "square_50m.yaml",
+        300,
+        mavsdk_server_host,
+        mavsdk_server_port,
+        mavlink_url,
+    )
     if result.returncode != 0:
         pytest.fail(
             f"square_50m mission falhou (exit={result.returncode}).\n"
