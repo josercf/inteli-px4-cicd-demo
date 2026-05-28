@@ -224,7 +224,7 @@ def square_50m_mission_completed(
     result = _run_mission(
         repo_root,
         repo_root / "missions" / "square_50m.yaml",
-        timeout_s=300,
+        300,
         mavsdk_server_host,
         mavsdk_server_port,
         mavlink_url,
