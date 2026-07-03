@@ -1,0 +1,30 @@
+# OpenChoreo Component — manifesto conceitual.
+#
+# Conforme ADR-002, o demo usa re-tag GHCR pra promoção entre ambientes (não
+# OpenChoreo real). Esse arquivo fica versionado como material de referência
+# pra discussão na Aula 10 ("isso é o que rodaria em produção").
+#
+# Quando o repo for adotado por uma org com OpenChoreo, aplicar via:
+#   oc apply -f openchoreo/component.yaml
+apiVersion: core.choreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: px4-firmware
+  description: "Firmware PX4 do demo Inteli T13 — autopilot de drone embarcado"
+  labels:
+    project: inteli-px4-cicd-demo
+    domain: embedded
+    criticality: high
+spec:
+  type: service
+  source:
+    git:
+      repository: https://github.com/josercf/inteli-px4-cicd-demo
+      revision: main
+      path: /
+  build:
+    type: docker
+    dockerfile: docker/Dockerfile.sitl
+  registry:
+    type: ghcr
+    image: ghcr.io/josercf/px4-sitl
